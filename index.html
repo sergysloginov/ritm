@@ -583,6 +583,30 @@ kbd{padding:2px 6px;background:var(--surface2);border:1px solid var(--line);bord
 <input type="file" id="importFile" accept=".json,application/json" hidden>
 <script>
 'use strict';
+const GOOGLE_CLIENT_ID = '1063419771681-dkeoiorq9rnabjes9fgqjtp9s3c719ln.apps.googleusercontent.com';
+const SCOPES = 'https://www.googleapis.com/auth/drive.appdata';
+let accessToken = null;
+let tokenClient = null;
+function gisInit() {
+  if (typeof google === 'undefined') return;
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: SCOPES,
+    callback: (resp) => {
+      if (resp && resp.access_token) {
+        accessToken = resp.access_token;
+        toast('Google Drive подключен', 'success');
+        driveLoad();
+      } else toast('Не удалось получить доступ', 'danger');
+    }
+  });
+}
+(function loadGIS() {
+  const s = document.createElement('script');
+  s.src = 'https://accounts.google.com/gsi/client';
+  s.async = true; s.defer = true; s.onload = gisInit;
+  document.head.appendChild(s);
+})();
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const pad=n=>String(n).padStart(2,'0');
@@ -704,6 +728,51 @@ function load(){
   S=seed();ensureStartDates();save();
 }
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
+const DRIVE_FILENAME = 'ritm-data.json';
+async function driveSave() {
+  if (!accessToken) { toast('Сначала подключите Google Drive', 'danger'); return; }
+  const data = JSON.stringify({routines:S.routines,tasks:S.tasks,completions:S.completions,overrides:S.overrides,dayOrder:S.dayOrder,views:S.views,ui:S.ui});
+  try {
+    const sr = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${DRIVE_FILENAME}'&spaces=appDataFolder`, {headers:{Authorization:`Bearer ${accessToken}`}});
+    const res = await sr.json();
+    if (res.files && res.files.length) {
+      await fetch(`https://www.googleapis.com/upload/drive/v3/files/${res.files[0].id}?uploadType=media`, {
+        method:'PATCH', headers:{'Authorization':`Bearer ${accessToken}`,'Content-Type':'application/json'}, body:data
+      });
+      toast('Сохранено в Google Drive', 'success');
+    } else {
+      const meta = {name:DRIVE_FILENAME, parents:['appDataFolder']};
+      const form = new FormData();
+      form.append('metadata', new Blob([JSON.stringify(meta)], {type:'application/json'}));
+      form.append('file', new Blob([data], {type:'application/json'}));
+      await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+        method:'POST', headers:{'Authorization':`Bearer ${accessToken}`}, body:form
+      });
+      toast('Впервые сохранено в Google Drive', 'success');
+    }
+  } catch(e) { toast('Ошибка сохранения в Drive', 'danger'); }
+}
+async function driveLoad() {
+  if (!accessToken) { toast('Сначала подключите Google Drive', 'danger'); return; }
+  try {
+    const sr = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${DRIVE_FILENAME}'&spaces=appDataFolder`, {headers:{Authorization:`Bearer ${accessToken}`}});
+    const res = await sr.json();
+    if (!res.files || !res.files.length) { toast('В Drive пока нет данных', 'info'); return; }
+    const fr = await fetch(`https://www.googleapis.com/drive/v3/files/${res.files[0].id}?alt=media`, {headers:{Authorization:`Bearer ${accessToken}`}});
+    const d = await fr.json();
+    S.routines = d.routines||[]; S.tasks = d.tasks||[];
+    S.completions = d.completions||{}; S.overrides = d.overrides||{}; S.dayOrder = d.dayOrder||{};
+    S.views = d.views||S.views;
+    S.ui = Object.assign(defaultUi(), d.ui||{});
+    applyTheme(); save(); renderAll();
+    if(!$('#routineWrap').hidden) renderRoutines();
+    toast('Загружено из Google Drive', 'success');
+  } catch(e) { toast('Ошибка загрузки из Drive', 'danger'); }
+}
+function connectDrive() {
+  if (!tokenClient) { toast('Подождите, Google ещё загружается', 'danger'); return; }
+  tokenClient.requestAccessToken({prompt:'consent'});
+}
 
 function itemsFor(date){
   const d=dow(date),ov=S.overrides[date]||{},comp=S.completions[date]||{};
@@ -1131,6 +1200,12 @@ function togglePop(anchor,html,type){const p=$('#popover');if(!p.hidden&&popAnch
 function viewsHTML(){return '<div class="pop-title">Сохранённые виды</div>'+S.views.map(v=>'<div class="vrow" data-view="'+v.id+'"><span>'+esc(v.name)+'</span>'+(v.custom?'<button data-vdel="'+v.id+'" title="Удалить вид">🗑</button>':'')+'</div>').join('')+'<div class="pop-sep"></div><div class="pop-title">Сохранить текущий вид</div><div class="vsave"><input class="inp" id="vName" placeholder="Название…"><button class="btn small primary" data-vsave="1">Сохранить</button></div>';}
 function monthHTML(){return '<div class="mp-y"><button class="icon-btn" data-my="-1">‹</button><b>'+mpY+'</b><button class="icon-btn" data-my="1">›</button></div><div class="mp-grid">'+MONTHS.map((m,i)=>'<button data-m="'+i+'" class="'+(i===S.ui.cm&&mpY===S.ui.cy?'cur':'')+'">'+m.slice(0,3)+'</button>').join('')+'</div>';}
 function menuHTML(){
+  return '<div class="pop-title">Синхронизация</div>'+
+  '<button class="mitem" data-menu="connectDrive">☁️ Подключить Google Drive</button>'+
+  '<button class="mitem" data-menu="saveToDrive">⬆️ Сохранить в Drive</button>'+
+  '<button class="mitem" data-menu="loadFromDrive">⬇️ Загрузить из Drive</button>'+
+  '<div class="pop-sep"></div>'+
+  '<div class="pop-title">Данные</div><button class="mitem" data-menu="export">⬇ Экспорт JSON</button>...
   return '<div class="pop-title">Данные</div><button class="mitem" data-menu="export">⬇ Экспорт JSON</button><button class="mitem" data-menu="import">⬆ Импорт JSON</button><button class="mitem" data-menu="ics">📅 Экспорт в .ics</button><button class="mitem" data-menu="stats">📊 Статистика</button><div class="pop-sep"></div><div class="pop-title">Уведомления</div><button class="mitem" data-menu="notify">🔔 Напоминания'+(S.ui.remindBefore>0?' ✓':'…')+'</button><div class="pop-sep"></div><button class="mitem" data-menu="reset" style="color:#FF9A9A">↺ Сбросить к примерам</button><div class="mnote">Экспорт сохраняет задачи, рутину, даты старта и отметки. Импорт заменяет текущие данные с возможностью отмены.</div>';
 }
 function applyView(v){S.ui.cats=(v.cats||[]).slice();S.ui.tags=(v.tags||[]).slice();S.ui.status=v.status||'all';S.ui.sort=v.sort||'time';S.ui.search=v.search||'';clearBulk();save();closePop();renderAll();toast('Вид: '+v.name,'success');}
@@ -1496,6 +1571,9 @@ function bind(){
       closePop();
       const a=mn.dataset.menu;
       if(a==='export')exportData();
+      else if(a==='connectDrive')connectDrive();
+      else if(a==='saveToDrive')driveSave();
+      else if(a==='loadFromDrive')driveLoad();
       else if(a==='import')$('#importFile').click();
       else if(a==='ics')exportICS();
       else if(a==='stats')openStats();
