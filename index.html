@@ -1205,11 +1205,8 @@ function menuHTML(){
   '<button class="mitem" data-menu="saveToDrive">⬆️ Сохранить в Drive</button>'+
   '<button class="mitem" data-menu="loadFromDrive">⬇️ Загрузить из Drive</button>'+
   '<div class="pop-sep"></div>'+
-  '<div class="pop-title">Данные</div><button class="mitem" data-menu="export">⬇ Экспорт JSON</button>...
-  return '<div class="pop-title">Данные</div><button class="mitem" data-menu="export">⬇ Экспорт JSON</button><button class="mitem" data-menu="import">⬆ Импорт JSON</button><button class="mitem" data-menu="ics">📅 Экспорт в .ics</button><button class="mitem" data-menu="stats">📊 Статистика</button><div class="pop-sep"></div><div class="pop-title">Уведомления</div><button class="mitem" data-menu="notify">🔔 Напоминания'+(S.ui.remindBefore>0?' ✓':'…')+'</button><div class="pop-sep"></div><button class="mitem" data-menu="reset" style="color:#FF9A9A">↺ Сбросить к примерам</button><div class="mnote">Экспорт сохраняет задачи, рутину, даты старта и отметки. Импорт заменяет текущие данные с возможностью отмены.</div>';
+  '<div class="pop-title">Данные</div><button class="mitem" data-menu="export">⬇ Экспорт JSON</button><button class="mitem" data-menu="import">⬆ Импорт JSON</button><button class="mitem" data-menu="ics">📅 Экспорт в .ics</button><button class="mitem" data-menu="stats">📊 Статистика</button><div class="pop-sep"></div><div class="pop-title">Уведомления</div><button class="mitem" data-menu="notify">🔔 Напоминания'+(S.ui.remindBefore>0?' ✓':'…')+'</button><div class="pop-sep"></div><button class="mitem" data-menu="reset" style="color:#FF9A9A">↺ Сбросить к примерам</button><div class="mnote">Экспорт сохраняет задачи, рутину, даты старта и отметки. Импорт заменяет текущие данные с возможностью отмены.</div>';
 }
-function applyView(v){S.ui.cats=(v.cats||[]).slice();S.ui.tags=(v.tags||[]).slice();S.ui.status=v.status||'all';S.ui.sort=v.sort||'time';S.ui.search=v.search||'';clearBulk();save();closePop();renderAll();toast('Вид: '+v.name,'success');}
-
 function exportData(){
   const data={app:'ritm',version:2,exported:new Date().toISOString(),routines:S.routines,tasks:S.tasks,completions:S.completions,overrides:S.overrides,dayOrder:S.dayOrder,views:S.views};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
